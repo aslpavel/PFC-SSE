@@ -40,7 +40,7 @@ ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
     // init
     ui64 shuffle = table[mask*2];
     ui64 blend = table[mask*2 + 1];
-    ui64 data = (ui64) *buff;
+    ui64 data = * (ui64*) buff;
     ui64 item;
 
     // body
@@ -51,18 +51,23 @@ ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
         pblendvb -> _mm_blendv_epi8
     */
     asm (
+        // debug ( set registers to zero )
+        "pxor       %%xmm0, %%xmm0\n"
+        "pxor       %%xmm1, %%xmm1\n"
+        "pxor       %%xmm2, %%xmm2\n"
+
         // shuffle
-        "movq       %1, %%mm1\n"      // data -> xmm1
-        "movq       %2, %%mm0\n"      // shuffle -> xmm0
-        "pshufb     %%mm0, %%mm1\n"   // shuffle bytes -> xmm1
+        "movq       %1, %%xmm1\n"       // data -> xmm1
+        "movq       %2, %%xmm0\n"       // shuffle -> xmm0
+        "pshufb     %%xmm0, %%xmm1\n"   // shuffle bytes -> xmm1
         // blend
-        "pxor       %%xmm0, %%xmm0\n" // xmm0 = 0
-        "movq       %3, %%mm0\n"      // mask -> xmm0
-        "pxor       %%xmm2, %%xmm2\n" // xmm2 = 0
-        "movq       %4, %%mm2\n"      // prev -> xmm2
-        "pblendvb   %%xmm1, %%xmm2\n" // update previos with changed data
+        "pxor       %%xmm0, %%xmm0\n"   // xmm0 = 0
+        "movq       %3, %%xmm0\n"       // mask -> xmm0
+        "pxor       %%xmm2, %%xmm2\n"   // xmm2 = 0
+        "movq       %4, %%xmm2\n"       // prev -> xmm2
+        "pblendvb   %%xmm1, %%xmm2\n"   // update previos with changed data
         // return value
-        "movq   %%mm2, %0\n"
+        "movq   %%xmm2, %0\n"
         : "=r"(item)
         : "r"(data), "r"(shuffle), "r"(blend), "r"(prev)
         : "xmm0", "xmm1", "xmm2"
@@ -110,11 +115,11 @@ int main()
     }
 
     // test values
-    ui8 mask = 170;         // 0b1 0  1 0  1 0  1 0
-    ui64 prev = ~(ui64) 0;  // 0xFFFF FFFF FFFF FFFF
-    ui64 rbuf = 0xffffffff01010101;
+    ui8 mask = 234;                     // 0b 1 1  1 0  1 0  1 0
+    ui64 prev = ~(ui64) 0;              // 0x FFFF FFFF FFFF FFFF
+    ui64 rbuf = 0xffffff1122334455;     // -> 55 44 33 22 11 FF FF FF
     ui8* buf = (ui8*) &rbuf;
-    // () => 0x01ff 01ff 01ff 01ff
+    // () => 0x 11 22 33 ff 44 ff 55 ff
 
     f_unpack simple = simple_unpack;
     f_unpack sse = sse_unpack;
