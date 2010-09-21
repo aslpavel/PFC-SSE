@@ -17,7 +17,7 @@ typedef ui64 (* f_unpack) ( ui8 mask, ui64 prev, ui8* buf, ui64* table );
 
 using namespace std;
 
-inline ui64 simple_unpack( ui8 mask, ui64 prev, ui8* buf, ui64* table )
+inline __attribute__((always_inline)) ui64 simple_unpack( ui8 mask, ui64 prev, ui8* buf, ui64* table )
 {
     // mine
     ui64 item = prev;
@@ -36,7 +36,7 @@ inline ui64 simple_unpack( ui8 mask, ui64 prev, ui8* buf, ui64* table )
     return item;
 }
 
-inline ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
+inline __attribute__((always_inline)) ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
 {
     // init
     ui64 shuffle = table[ mask*2 ];
@@ -56,18 +56,18 @@ inline ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
     */
     asm (
         // set registers to zero
-        "pxor       %%xmm0, %%xmm0\n"
-        "pxor       %%xmm1, %%xmm1\n"
-        "pxor       %%xmm2, %%xmm2\n"
+        //"pxor       %%xmm0, %%xmm0\n"
+        //"pxor       %%xmm1, %%xmm1\n"
+        //"pxor       %%xmm2, %%xmm2\n"
 
         // shuffle
         "movq       %1, %%xmm1\n"       // data -> xmm1
         "movq       %2, %%xmm0\n"       // shuffle -> xmm0
         "pshufb     %%xmm0, %%xmm1\n"   // shuffle bytes -> xmm1
         // blend
-        "pxor       %%xmm0, %%xmm0\n"   // xmm0 = 0
+        //"pxor       %%xmm0, %%xmm0\n"   // xmm0 = 0
         "movq       %3, %%xmm0\n"       // mask -> xmm0
-        "pxor       %%xmm2, %%xmm2\n"   // xmm2 = 0
+        //"pxor       %%xmm2, %%xmm2\n"   // xmm2 = 0
         "movq       %4, %%xmm2\n"       // prev -> xmm2
         "pblendvb   %%xmm1, %%xmm2\n"   // update previos with changed data
         // return value
@@ -120,14 +120,16 @@ int main()
     ui64 prev = ~(ui64) 0;              // 0x FFFF FFFF FFFF FFFF
     ui64 rbuf = 0xffffff1122334455;     // -> 55 44 33 22 11 FF FF FF
     ui8* buf = (ui8*) &rbuf;
+    volatile ui64 out = 0;
     // () => 0x 11 22 33 ff 44 ff 55 ff
 
     // just for fun
     f_unpack simple = simple_unpack;
     f_unpack sse = sse_unpack;
 
-    printf("SSE:\t%lX => %lX\n", prev, sse( mask, prev, buf, table ));
-    printf("Simple:\t%lX => %lX\n", prev, simple( mask, prev, buf, table ));
+    cout << ":: Test\n";
+    printf("\tSSE:\t%lX => %lX\n", prev, sse( mask, prev, buf, table ));
+    printf("\tSimple:\t%lX => %lX\n", prev, simple( mask, prev, buf, table ));
 
     // Benchmark
     uint64_t count = 10000000;
@@ -138,7 +140,7 @@ int main()
     gettimeofday(&start, 0);
     for( uint64_t i = 0; i < count; i++ )
     {
-        sse_unpack( mask, prev, buf, table );
+        out = sse_unpack( mask, prev, buf, table );
     }
     gettimeofday(&end, 0);
     double sse_time =
@@ -150,7 +152,7 @@ int main()
     gettimeofday(&start, 0);
     for( uint64_t i = 0; i < count; i++ )
     {
-        simple_unpack( mask, prev, buf, table );
+        out = simple_unpack( mask, prev, buf, table );
     }
     gettimeofday(&end, 0);
     double simple_time =
