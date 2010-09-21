@@ -130,8 +130,8 @@ int main()
     printf("Simple:\t%lX => %lX\n", prev, simple( mask, prev, buf, table ));
 
     // Benchmark
-    cout << "\n:: Benchmark\n";
     uint64_t count = 10000000;
+    printf("\n:: Benchmark ( Runs: %ld )\n", count);
     struct timeval start, end;
 
     // SSE
