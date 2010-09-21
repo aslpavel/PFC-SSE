@@ -1,6 +1,7 @@
 // stdlib
 #include <stdint.h>
 #include <stdio.h>
+#include <sys/time.h>
 
 // sse
 #include <smmintrin.h>
@@ -16,7 +17,7 @@ typedef ui64 (* f_unpack) ( ui8 mask, ui64 prev, ui8* buf, ui64* table );
 
 using namespace std;
 
-ui64 simple_unpack( ui8 mask, ui64 prev, ui8* buf, ui64* table )
+inline ui64 simple_unpack( ui8 mask, ui64 prev, ui8* buf, ui64* table )
 {
     // mine
     ui64 item = prev;
@@ -35,7 +36,7 @@ ui64 simple_unpack( ui8 mask, ui64 prev, ui8* buf, ui64* table )
     return item;
 }
 
-ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
+inline ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
 {
     // init
     ui64 shuffle = table[ mask*2 ];
@@ -44,7 +45,7 @@ ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
     ui64 item;
 
     // debug
-    printf("shuffle: %lx, blend: %lx, data: %lx\n ", shuffle, blend, data);
+    // printf("shuffle: %lx, blend: %lx, data: %lx\n ", shuffle, blend, data);
 
     // body
     /*
@@ -121,14 +122,42 @@ int main()
     ui8* buf = (ui8*) &rbuf;
     // () => 0x 11 22 33 ff 44 ff 55 ff
 
+    // just for fun
     f_unpack simple = simple_unpack;
     f_unpack sse = sse_unpack;
 
-    cout << "Simple Unpack" << endl;
-    printf("%lX => %lX\n", prev, simple( mask, prev, buf, table ));
+    printf("SSE:\t%lX => %lX\n", prev, sse( mask, prev, buf, table ));
+    printf("Simple:\t%lX => %lX\n", prev, simple( mask, prev, buf, table ));
 
-    cout << "SSE Unpack" << endl;
-    printf("%lX => %lX\n", prev, sse( mask, prev, buf, table ));
+    // Benchmark
+    cout << "\n:: Benchmark\n";
+    uint64_t count = 10000000;
+    struct timeval start, end;
 
+    // SSE
+    gettimeofday(&start, 0);
+    for( uint64_t i = 0; i < count; i++ )
+    {
+        sse_unpack( mask, prev, buf, table );
+    }
+    gettimeofday(&end, 0);
+    double sse_time =
+        (end.tv_sec - start.tv_sec)*1000000 +
+        (end.tv_usec - start.tv_usec);
+    cout << "\tSSE:\t\t" << sse_time << "u\n";
+
+    // Simple
+    gettimeofday(&start, 0);
+    for( uint64_t i = 0; i < count; i++ )
+    {
+        simple_unpack( mask, prev, buf, table );
+    }
+    gettimeofday(&end, 0);
+    double simple_time =
+        (end.tv_sec - start.tv_sec)*1000000 +
+        (end.tv_usec - start.tv_usec);
+    cout << "\tSimple:\t\t" << simple_time << "u\n";
+
+    printf("\tSimple/SSE:\t%f\n", simple_time / sse_time);
     return 0;
 }
