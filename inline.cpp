@@ -38,10 +38,13 @@ ui64 simple_unpack( ui8 mask, ui64 prev, ui8* buf, ui64* table )
 ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
 {
     // init
-    ui64 shuffle = table[mask*2];
-    ui64 blend = table[mask*2 + 1];
+    ui64 shuffle = table[ mask*2 ];
+    ui64 blend = table[ mask*2 + 1 ];
     ui64 data = * (ui64*) buff;
     ui64 item;
+
+    // debug
+    printf("shuffle: %lx, blend: %lx, data: %lx\n ", shuffle, blend, data);
 
     // body
     /*
@@ -51,7 +54,7 @@ ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
         pblendvb -> _mm_blendv_epi8
     */
     asm (
-        // debug ( set registers to zero )
+        // set registers to zero
         "pxor       %%xmm0, %%xmm0\n"
         "pxor       %%xmm1, %%xmm1\n"
         "pxor       %%xmm2, %%xmm2\n"
@@ -67,7 +70,7 @@ ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
         "movq       %4, %%xmm2\n"       // prev -> xmm2
         "pblendvb   %%xmm1, %%xmm2\n"   // update previos with changed data
         // return value
-        "movq   %%xmm2, %0\n"
+        "movq       %%xmm2, %0\n"
         : "=r"(item)
         : "r"(data), "r"(shuffle), "r"(blend), "r"(prev)
         : "xmm0", "xmm1", "xmm2"
@@ -80,11 +83,10 @@ int main()
 {
     // Generate lookup table ( shuffle, blend )
     ui64 table[512];
-    for ( ui8 mask = 0; mask++; mask < 255 )
+    for ( ui8 mask = 0; mask < 255; mask++ )
     {
 
-        ui64 shuffle = 0, blend = 0;
-        ui8 copy = 0;
+        ui64 shuffle = 0, blend = 0, copy = 0;
 
         for ( int b = 0; b < 8; b++ )
         {
@@ -96,17 +98,15 @@ int main()
             if ( (mask >> b) & 0x1 )
             {
                 // update byte
-                 blend = 0x80 | ( blend << 8*b );
+                blend |= 0xffL << 8*b;
                 // copy byte from copy postition
-                shuffle = copy | ( shuffle << 8*b );
+                shuffle |= copy << 8*b;
 
                 copy += 1;
 
             } else {
-                // leave byte
-                blend <<= 8*b;
                 // set byte to zero
-                shuffle = 0x80 | ( shuffle << 8*b );
+                shuffle |= 0x80L << 8*b ;
             }
         }
 
