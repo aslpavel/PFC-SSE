@@ -3,9 +3,6 @@
 #include <stdio.h>
 #include <sys/time.h>
 
-// sse
-#include <smmintrin.h>
-
 // stl
 #include <iostream>
 
