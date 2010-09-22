@@ -39,13 +39,12 @@ inline __attribute__((always_inline)) ui64 simple_unpack( ui8 mask, ui64 prev, u
 inline __attribute__((always_inline)) ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
 {
     // init
-    ui64 shuffle = table[ mask*2 ];
-    ui64 blend = table[ mask*2 + 1 ];
+    ui64 shuffle = table[ mask ], blend;
     ui64 data = * (ui64*) buff;
     ui64 item;
 
     // debug
-    // printf("shuffle: %lx, blend: %lx, data: %lx\n ", shuffle, blend, data);
+    // printf("shuffle: %lx, data: %lx\n ", shuffle, data);
 
     // body
     /*
@@ -55,27 +54,22 @@ inline __attribute__((always_inline)) ui64 sse_unpack( ui8 mask, ui64 prev, ui8*
         pblendvb -> _mm_blendv_epi8
     */
     asm (
-        // set registers to zero
-        //"pxor       %%xmm0, %%xmm0\n"
-        //"pxor       %%xmm1, %%xmm1\n"
-        //"pxor       %%xmm2, %%xmm2\n"
-
         // shuffle
         "movq       %1, %%xmm1\n"       // data -> xmm1
         "movq       %2, %%xmm0\n"       // shuffle -> xmm0
         "pshufb     %%xmm0, %%xmm1\n"   // shuffle bytes -> xmm1
         // blend
-        //"pxor       %%xmm0, %%xmm0\n"   // xmm0 = 0
-        "movq       %3, %%xmm0\n"       // mask -> xmm0
-        //"pxor       %%xmm2, %%xmm2\n"   // xmm2 = 0
-        "movq       %4, %%xmm2\n"       // prev -> xmm2
+        "shl        $1, %2\n"           // shuffle mask -> blend mask
+        "movq       %2, %%xmm0\n"       // blend -> xmm0
+        "movq       %3, %%xmm2\n"       // prev -> xmm2
         "pblendvb   %%xmm1, %%xmm2\n"   // update previos with changed data
         // return value
         "movq       %%xmm2, %0\n"
+        //"movq       %%xmm0, %%rax\n"
         : "=r"(item)
-        : "r"(data), "r"(shuffle), "r"(blend), "r"(prev)
+        : "r"(data), "r"(shuffle), "r"(prev)
         : "xmm0", "xmm1", "xmm2"
-   );
+    );
 
     return item;
 }
@@ -83,7 +77,7 @@ inline __attribute__((always_inline)) ui64 sse_unpack( ui8 mask, ui64 prev, ui8*
 int main()
 {
     // Generate lookup table ( shuffle, blend )
-    ui64 table[512];
+    ui64 table[256];
     for ( ui8 mask = 0; mask < 255; mask++ )
     {
 
@@ -94,12 +88,13 @@ int main()
             // 0x80 - highest bit in byte
             // pblendvb -> menas copy
             // pshufb   -> set to zero
+            // 5-6 bits in shuffle mask is unsued so use 6bit to store blend
 
             // copy needed
             if ( (mask >> b) & 0x1 )
             {
-                // update byte
-                blend |= 0xffL << 8*b;
+                // update byte ( set 6s bit )
+                blend |= 0x40L << 8*b;
                 // copy byte from copy postition
                 shuffle |= copy << 8*b;
 
@@ -111,8 +106,7 @@ int main()
             }
         }
 
-        table[ mask*2 ] = shuffle;
-        table[ mask*2 + 1 ] = blend;
+        table[ mask ] = shuffle | blend;
     }
 
     // test values
@@ -131,6 +125,7 @@ int main()
     printf("\tSSE:\t%lX => %lX\n", prev, sse( mask, prev, buf, table ));
     printf("\tSimple:\t%lX => %lX\n", prev, simple( mask, prev, buf, table ));
 
+#if 1
     // Benchmark
     uint64_t count = 10000000;
     printf("\n:: Benchmark ( Runs: %ld )\n", count);
@@ -161,5 +156,7 @@ int main()
     cout << "\tSimple:\t\t" << simple_time << "u\n";
 
     printf("\tSimple/SSE:\t%f\n", simple_time / sse_time);
+#endif
+
     return 0;
 }
