@@ -8,11 +8,11 @@ Compiller=g++
 endif
 
 all: pfc_sse.cpp
-	$(Compiller) -Winline -msse3 -g -o pfc_sse $<
+	$(Compiller) -Winline -g -o pfc_sse $<
 
 # with havy optimization
 o: pfc_sse.cpp
-	$(Compiller) -O3 -Winline -msse4.1 -g -o pfc_sse $<
+	$(Compiller) -O3 -Winline -g -o pfc_sse $<
 
 pkgDir = pfc_sse_$(shell date +%d%m%Y)
 pkg: Makefile pfc_sse.cpp

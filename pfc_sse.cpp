@@ -1,6 +1,7 @@
 // stdlib
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/time.h>
 
 // stl
@@ -9,11 +10,54 @@
 // arcadia typedefs
 typedef uint32_t ui32;
 typedef uint64_t ui64;
+typedef uint16_t ui16;
 typedef uint8_t ui8;
 
 using namespace std;
 
 #define FORCE_INLINE __attribute__((always_inline))
+#define BENCHMARK 1
+#define SLOW_FETCH 0
+
+// SSE version
+FORCE_INLINE ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
+{
+    ui64 shuffle = table[ mask ], item;
+    ui8  count = ( shuffle >> 3 ) & 7;
+#if SLOW_FETCH
+    ui64 data = 0;
+    for ( int i = 0; i < count; i++ )
+        data |= *(ui64*)(buff + i) << 8 * i;
+    printf("data: %lx, buff: %lx, count: %d\n", data, *(ui64*)buff, count);
+#endif
+
+    // pshufb   ~ _mm_shuffle_pi8
+    // pblendvb ~ _mm_blendv_epi8
+    asm (
+        // shuffle
+        "movq       (%1), %%xmm1\n"     // data     -> xmm1
+        "movq       %2, %%xmm0\n"       // smask    -> xmm0
+        "pshufb     %%xmm0, %%xmm1\n"   // shuffle  -> xmm1
+        // blend
+        "shl        $1, %2\n"           // smask -> bmask
+        "movq       %2, %%xmm0\n"       // bmask -> xmm0
+        "movq       %3, %%xmm2\n"       // prev  -> xmm2
+        "pblendvb   %%xmm1, %%xmm2\n"   // blned( mask, data, prev ) -> xmm2
+        // return value
+        "movq       %%xmm2, %0\n"       // xmm2 -> item
+        : "=r"(item)
+        : "r"(buff), "r"(shuffle), "r"(prev)
+        : "xmm0", "xmm1", "xmm2"
+    );
+
+    // debug
+    /*
+    printf("shuffle: %lx, prev: %lx, item: %lx, count %d\n ",
+            shuffle, prev, item, count);
+    */
+
+    return item;
+}
 
 // Plain C version
 FORCE_INLINE ui64 simple_unpack( ui8 mask, ui64 prev, ui8* buf, ui64* table )
@@ -35,45 +79,13 @@ FORCE_INLINE ui64 simple_unpack( ui8 mask, ui64 prev, ui8* buf, ui64* table )
     return item;
 }
 
-// SSE version
-FORCE_INLINE ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
-{
-    ui64 shuffle = table[ mask ];
-    ui64 data = * (ui64*) buff;
-    ui64 item;
-
-    // debug
-    // printf("shuffle: %lx, data: %lx\n ", shuffle, data);
-
-    // pshufb   ~ _mm_shuffle_pi8
-    // pblendvb ~ _mm_blendv_epi8
-    asm (
-        // shuffle
-        "movq       %1, %%xmm1\n"       // data     -> xmm1
-        "movq       %2, %%xmm0\n"       // smask    -> xmm0
-        "pshufb     %%xmm0, %%xmm1\n"   // shuffle  -> xmm1
-        // blend
-        "shl        $1, %2\n"           // smask -> bmask
-        "movq       %2, %%xmm0\n"       // bmask -> xmm0
-        "movq       %3, %%xmm2\n"       // prev  -> xmm2
-        "pblendvb   %%xmm1, %%xmm2\n"   // blned( mask, data, prev ) -> xmm2
-        // return value
-        "movq       %%xmm2, %0\n"       // xmm2 -> item
-        : "=r"(item)
-        : "r"(data), "r"(shuffle), "r"(prev)
-        : "xmm0", "xmm1", "xmm2"
-    );
-
-    return item;
-}
-
 int main()
 {
     // Generate mask table
     ui64 table[256];
     for ( ui8 mask = 0; mask < 255; mask++ )
     {
-        ui64 shuffle = 0, blend = 0, copy = 0;
+        ui64 shuffle = 0, blend = 0, count = 0;
         for ( int b = 0; b < 8; b++ )
         {
             /*
@@ -86,7 +98,7 @@ int main()
              *  |     |     ^^^
              *  |     |     Mask bit
              *  |     ^^^^^^
-             *  |     Unused
+             *  |     Count of bytes to copy ( only first byte )
              *  ^^^^^^^
              *  Shuffle shift bits
              */
@@ -97,15 +109,15 @@ int main()
                 // set blend bit
                 blend |= 0x40L << 8*b;
                 // set suffle shift
-                shuffle |= copy << 8*b;
-                // update copy shift
-                copy += 1;
+                shuffle |= count << 8*b;
+                // update count shift
+                count += 1;
             } else {
                 // set byte to zero
                 shuffle |= 0x80L << 8*b ;
             }
         }
-        table[ mask ] = shuffle | blend;
+        table[ mask ] = shuffle | blend | ( count << 3 );
     }
 
     // test values
@@ -122,7 +134,7 @@ int main()
     printf("\tSimple:\t%lX => %lX\n",
            prev, simple_unpack( mask, prev, buf, table ));
 
-#if 1
+#if BENCHMARK
     // Benchmark
     uint64_t count = 10000000;
     printf("\n:: Benchmark ( Runs: %ld )\n", count);
