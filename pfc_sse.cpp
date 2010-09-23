@@ -16,45 +16,60 @@ typedef uint8_t ui8;
 using namespace std;
 
 #define FORCE_INLINE __attribute__((always_inline))
+#define FORCE_INLINE
 #define BENCHMARK 1
-#define SLOW_FETCH 0
+#define SLOW_FETCH 1
 
 // SSE version
 FORCE_INLINE ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
 {
     ui64 shuffle = table[ mask ], item;
-    ui8  count = ( shuffle >> 3 ) & 7;
-#if SLOW_FETCH
-    ui64 data = 0;
-    for ( int i = 0; i < count; i++ )
-        data |= *(ui64*)(buff + i) << 8 * i;
-    printf("data: %lx, buff: %lx, count: %d\n", data, *(ui64*)buff, count);
-#endif
+    ui64  count = ( shuffle >> 4 ) & 7;
 
     // pshufb   ~ _mm_shuffle_pi8
     // pblendvb ~ _mm_blendv_epi8
     asm (
+
+#if SLOW_FETCH != 1
+        // if ( ( buf & 0xfff ) >= 0xff7 ) )
+        "movq       %1, %%rax\n"
+        "and        $0xfff, %%rax\n"
+        "cmp        $0xff6, %%rax\n"
+        "jbe        1f\n"
+        // slow
+#endif
+            // %rax = *(ui64*) (buf + count - 8)
+            "movq       -0x8(%1,%4,1), %%rax\n"
+            // %rax >>= (8 - count) * 8
+            "mov        $0x8, %%rcx\n"
+            "sub        %4, %%rcx\n"
+            "shl        $0x3, %%rcx\n"
+            "shr        %%cl, %%rax\n"
+            // %rax -> %xmm1
+            "movq       %%rax, %%xmm1\n"
+#if SLOW_FETCH != 1
+            "jmp        2f\n"
+        "1:\n"
+        // fast
+            "movq       (%1), %%xmm1\n" // data     -> xmm1
+        "2:\n"
+        // out
+#endif
         // shuffle
-        "movq       (%1), %%xmm1\n"     // data     -> xmm1
         "movq       %2, %%xmm0\n"       // smask    -> xmm0
         "pshufb     %%xmm0, %%xmm1\n"   // shuffle  -> xmm1
-        // blend
-        "shl        $1, %2\n"           // smask -> bmask
-        "movq       %2, %%xmm0\n"       // bmask -> xmm0
-        "movq       %3, %%xmm2\n"       // prev  -> xmm2
-        "pblendvb   %%xmm1, %%xmm2\n"   // blned( mask, data, prev ) -> xmm2
-        // return value
-        "movq       %%xmm2, %0\n"       // xmm2 -> item
-        : "=r"(item)
-        : "r"(buff), "r"(shuffle), "r"(prev)
-        : "xmm0", "xmm1", "xmm2"
-    );
 
-    // debug
-    /*
-    printf("shuffle: %lx, prev: %lx, item: %lx, count %d\n ",
-            shuffle, prev, item, count);
-    */
+        // blend
+        "movq       %3, %%xmm2\n"       // prev  -> xmm2
+        "pblendvb   %%xmm2, %%xmm1\n"   // blned( mask, data, prev ) -> xmm2
+
+        // return value
+        "movq       %%xmm1, %0\n"       // xmm2 -> item
+
+        : "=r"(item)
+        : "r"(buff), "r"(shuffle), "r"(prev), "r"(count)
+        : "xmm0", "xmm1", "xmm2", "rcx", "rax"
+    );
 
     return item;
 }
@@ -85,39 +100,36 @@ int main()
     ui64 table[256];
     for ( ui8 mask = 0; mask < 255; mask++ )
     {
-        ui64 shuffle = 0, blend = 0, count = 0;
+        ui64 shuffle = 0, count = 0;
         for ( int b = 0; b < 8; b++ )
         {
             /*
              *  Mask Format:
              *   0 1 2 3 4 5 6 7
-             *  |X.X.X.O.O.O.X.X|
-             *  |     |     | |
-             *  |     |     | ^^^
-             *  |     |     | Shuffle set 0 bit
-             *  |     |     ^^^
-             *  |     |     Mask bit
-             *  |     ^^^^^^
-             *  |     Count of bytes to copy ( only first byte )
-             *  ^^^^^^^
+             *  |X.X.X.X.O.O.O.X|
+             *  |       |     |
+             *  |       |     ^^^
+             *  |       |     Shuffle|Blend bit
+             *  |       |
+             *  |       ^^^^^^
+             *  |       Count of bytes to copy ( only first byte )
+             *  ^^^^^^^^^
              *  Shuffle shift bits
              */
 
             // copy needed
             if ( (mask >> b) & 0x1 )
             {
-                // set blend bit
-                blend |= 0x40L << 8*b;
                 // set suffle shift
                 shuffle |= count << 8*b;
                 // update count shift
                 count += 1;
             } else {
-                // set byte to zero
+                // set byte to zero | blend mask
                 shuffle |= 0x80L << 8*b ;
             }
         }
-        table[ mask ] = shuffle | blend | ( count << 3 );
+        table[ mask ] = shuffle | ( count << 4 );
     }
 
     // test values
