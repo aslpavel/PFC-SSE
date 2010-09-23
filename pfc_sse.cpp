@@ -16,9 +16,8 @@ typedef uint8_t ui8;
 using namespace std;
 
 #define FORCE_INLINE __attribute__((always_inline))
-#define FORCE_INLINE
 #define BENCHMARK 1
-#define SLOW_FETCH 1
+#define SLOW_FETCH 0
 
 // SSE version
 FORCE_INLINE ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
