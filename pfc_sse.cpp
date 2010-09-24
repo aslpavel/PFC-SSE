@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
+#include <stdlib.h>
 
 // stl
 #include <iostream>
@@ -20,10 +21,11 @@ using namespace std;
 #define SLOW_FETCH 0
 
 // SSE version
-FORCE_INLINE ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
+FORCE_INLINE ui64 sse_unpack( ui64 prev, ui8* &buf, const ui64* table )
 {
+    ui8 mask = *buf++;
     ui64 shuffle = table[ mask ], item;
-    ui64  count = ( shuffle >> 4 ) & 7;
+    ui64  count = ( shuffle >> 3 ) & 0xf;
 
     // pshufb   ~ _mm_shuffle_pi8
     // pblendvb ~ _mm_blendv_epi8
@@ -50,34 +52,37 @@ FORCE_INLINE ui64 sse_unpack( ui8 mask, ui64 prev, ui8* buff, ui64* table )
             "jmp        2f\n"
         "1:\n"
         // fast
-            "movq       (%1), %%xmm1\n" // data     -> xmm1
+            "movq       (%1), %%xmm1\n"         // data -> xmm1
         "2:\n"
         // out
 #endif
         // shuffle
-        "movq       %2, %%xmm0\n"       // smask    -> xmm0
-        "pshufb     %%xmm0, %%xmm1\n"   // shuffle  -> xmm1
+        "andq       $0xffffffffffffff87, %2\n"  // remove count form mask
+        "movq       %2, %%xmm0\n"               // smask    -> xmm0
+        "pshufb     %%xmm0, %%xmm1\n"           // shuffle  -> xmm1
 
         // blend
-        "movq       %3, %%xmm2\n"       // prev  -> xmm2
-        "pblendvb   %%xmm2, %%xmm1\n"   // blned( mask, data, prev ) -> xmm2
+        "movq       %3, %%xmm2\n"               // prev  -> xmm2
+        "pblendvb   %%xmm2, %%xmm1\n"           // blned -> xmm1
 
         // return value
-        "movq       %%xmm1, %0\n"       // xmm2 -> item
+        "movq       %%xmm1, %0\n"               // xmm1 -> item
 
         : "=r"(item)
-        : "r"(buff), "r"(shuffle), "r"(prev), "r"(count)
+        : "r"(buf), "r"(shuffle), "r"(prev), "r"(count)
         : "xmm0", "xmm1", "xmm2", "rcx", "rax"
     );
 
+    buf += count;
     return item;
 }
 
 // Plain C version
-FORCE_INLINE ui64 simple_unpack( ui8 mask, ui64 prev, ui8* buf, ui64* table )
+FORCE_INLINE ui64 simple_unpack( ui64 prev, ui8* &buf, const ui64* table )
 {
     // mine
     ui64 item = prev;
+    ui8 mask = *buf++;
 
     // unedited
     ui64 item_flag = 0, item_mask = ~(ui64)0;
@@ -97,7 +102,7 @@ int main()
 {
     // Generate mask table
     ui64 table[256];
-    for ( ui8 mask = 0; mask < 255; mask++ )
+    for ( ui32 mask = 0; mask < 256; mask++ )
     {
         ui64 shuffle = 0, count = 0;
         for ( int b = 0; b < 8; b++ )
@@ -128,54 +133,96 @@ int main()
                 shuffle |= 0x80L << 8*b ;
             }
         }
-        table[ mask ] = shuffle | ( count << 4 );
+        table[ mask ] = shuffle | ( count << 3 );
     }
 
     // test values
     volatile ui8 mask = 234;            // 0b 1 1  1 0  1 0  1 0
     ui64 prev = ~(ui64) 0;              // 0x FFFF FFFF FFFF FFFF
-    ui64 rbuf = 0xffffff1122334455;     // -> 55 44 33 22 11 FF FF FF
+    ui64 rbuf = 0xfff112233445500;     // -> 55 44 33 22 11 FF FF FF
+    rbuf |= mask;
     ui8* buf = (ui8*) &rbuf;
-    volatile ui64 out = 0;
     // () => 0x 11 22 33 ff 44 ff 55 ff
+    volatile ui64 out = 0;
 
     cout << ":: Test\n";
+    buf = (ui8*) &rbuf;
     printf("\tSSE:\t%lX => %lX\n",
-           prev, sse_unpack( mask, prev, buf, table ));
+           prev, sse_unpack( prev, buf, table ));
+    buf = (ui8*) &rbuf;
     printf("\tSimple:\t%lX => %lX\n",
-           prev, simple_unpack( mask, prev, buf, table ));
+           prev, simple_unpack( prev, buf, table ));
+
+    // random data
+    size_t size = 4096;
+    ui32 in_test[size], simple_out[size], sse_out[size];
+    for ( int i = 0; i < size; i++ )
+        in_test[i] = random();
+    memset(simple_out, 0, sizeof(simple_out));
+    memset(sse_out, 0, sizeof(sse_out));
 
 #if BENCHMARK
     // Benchmark
-    uint64_t count = 10000000;
+    uint64_t count = 10000;
     printf("\n:: Benchmark ( Runs: %ld )\n", count);
     struct timeval start, end;
 
     // SSE
     gettimeofday(&start, 0);
-    for( uint64_t i = 0; i < count; i++ )
-    {
-        out = sse_unpack( mask, prev, buf, table );
+    for( uint64_t j = 0; j < count; j++ ) {
+        prev = 0;
+        buf = (ui8*) in_test;
+        for( uint64_t i = 0; i < sizeof(in_test)/sizeof(out) - 1; i++ )
+        {
+            out = sse_unpack( prev, buf, table );
+            ((ui64*)sse_out)[i] = out;
+            prev = out;
+        }
     }
     gettimeofday(&end, 0);
     double sse_time =
         (end.tv_sec - start.tv_sec)*1000000 +
         (end.tv_usec - start.tv_usec);
-    cout << "\tSSE:\t\t" << sse_time << "u\n";
+    printf("\tSEE:\t\t%ldu\n", sse_time);
 
     // Simple
     gettimeofday(&start, 0);
-    for( uint64_t i = 0; i < count; i++ )
-    {
-        out = simple_unpack( mask, prev, buf, table );
+    for( uint64_t j = 0; j < count; j++ ) {
+        prev = 0;
+        buf = (ui8*) in_test;
+        for( uint64_t i = 0; i < sizeof(in_test)/sizeof(out) - 1; i++ )
+        {
+            out = simple_unpack( prev, buf, table );
+            ((ui64*)simple_out)[i] = out;
+            prev = out;
+        }
     }
     gettimeofday(&end, 0);
     double simple_time =
         (end.tv_sec - start.tv_sec)*1000000 +
         (end.tv_usec - start.tv_usec);
-    cout << "\tSimple:\t\t" << simple_time << "u\n";
+    printf("\tSimple:\t\t%ldu\n", simple_time);
 
+    // Result
     printf("\tSimple/SSE:\t%f\n", simple_time / sse_time);
+
+    // Verification
+    bool good = true;
+    int i = 0;
+    for(; i < size; i++ )
+    {
+        if ( simple_out[i] != sse_out[i] )
+        {
+            good = false;
+            break;
+        }
+    }
+    printf(":: Verification: ");
+    if ( !good )
+        printf("FAILED (on %d)\n", i);
+    else
+        printf("OK\n");
+
 #endif
 
     return 0;
