@@ -163,7 +163,7 @@ int main()
 
 #if BENCHMARK
     // Benchmark
-    uint64_t count = 10000;
+    uint64_t count = 1000;
     printf("\n:: Benchmark ( Runs: %ld )\n", count);
     struct timeval start, end;
 
