@@ -57,7 +57,7 @@ FORCE_INLINE ui64 sse_unpack( ui64 prev, ui8* &buf, const ui64* table )
         // out
 #endif
         // shuffle
-        "andq       $0xffffffffffffff87, %2\n"  // remove count form mask
+        "and       $0xffffffffffffff87, %2\n"   // remove count form mask
         "movq       %2, %%xmm0\n"               // smask    -> xmm0
         "pshufb     %%xmm0, %%xmm1\n"           // shuffle  -> xmm1
 
@@ -110,14 +110,14 @@ int main()
             /*
              *  Mask Format:
              *   0 1 2 3 4 5 6 7
-             *  |X.X.X.X.O.O.O.X|
-             *  |       |     |
-             *  |       |     ^^^
-             *  |       |     Shuffle|Blend bit
-             *  |       |
-             *  |       ^^^^^^
-             *  |       Count of bytes to copy ( only first byte )
-             *  ^^^^^^^^^
+             *  |X.X.X.O.O.O.O.X|
+             *  |     |       |
+             *  |     |       ^^^
+             *  |     |       Shuffle|Blend bit
+             *  |     |
+             *  |     ^^^^^^^^^
+             *  |     Count of bytes to copy ( only first byte )
+             *  ^^^^^^^
              *  Shuffle shift bits
              */
 
@@ -137,13 +137,12 @@ int main()
     }
 
     // test values
-    volatile ui8 mask = 234;            // 0b 1 1  1 0  1 0  1 0
+    ui8 mask = 234;            // 0b 1 1  1 0  1 0  1 0
     ui64 prev = ~(ui64) 0;              // 0x FFFF FFFF FFFF FFFF
     ui64 rbuf = 0xfff112233445500;     // -> 55 44 33 22 11 FF FF FF
     rbuf |= mask;
     ui8* buf = (ui8*) &rbuf;
     // () => 0x 11 22 33 ff 44 ff 55 ff
-    volatile ui64 out = 0;
 
     cout << ":: Test\n";
     buf = (ui8*) &rbuf;
@@ -153,6 +152,7 @@ int main()
     printf("\tSimple:\t%lX => %lX\n",
            prev, simple_unpack( prev, buf, table ));
 
+#if BENCHMARK
     // random data
     size_t size = 4096;
     ui32 in_test[size], simple_out[size], sse_out[size];
@@ -161,9 +161,9 @@ int main()
     memset(simple_out, 0, sizeof(simple_out));
     memset(sse_out, 0, sizeof(sse_out));
 
-#if BENCHMARK
     // Benchmark
     uint64_t count = 1000;
+    ui64 out = 0;
     printf("\n:: Benchmark ( Runs: %ld )\n", count);
     struct timeval start, end;
 
@@ -180,8 +180,8 @@ int main()
         }
     }
     gettimeofday(&end, 0);
-    double sse_time =
-        (end.tv_sec - start.tv_sec)*1000000 +
+    ui64 sse_time =
+        (end.tv_sec - start.tv_sec)*1000000L +
         (end.tv_usec - start.tv_usec);
     printf("\tSEE:\t\t%ldu\n", sse_time);
 
@@ -198,13 +198,14 @@ int main()
         }
     }
     gettimeofday(&end, 0);
-    double simple_time =
-        (end.tv_sec - start.tv_sec)*1000000 +
+    ui64 simple_time =
+        (end.tv_sec - start.tv_sec)*1000000L +
         (end.tv_usec - start.tv_usec);
     printf("\tSimple:\t\t%ldu\n", simple_time);
 
     // Result
-    printf("\tSimple/SSE:\t%f\n", simple_time / sse_time);
+    printf("\tSimple/SSE:\t%f\n",
+            (double) (simple_time * 10000 / sse_time) / 10000);
 
     // Verification
     bool good = true;
