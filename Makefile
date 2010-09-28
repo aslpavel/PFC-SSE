@@ -1,21 +1,26 @@
-.PHONY: clean
+.PHONY: clean all
 
 # Compiller
 ifeq ($(shell uname),FreeBSD)
-Compiller=gcc44 -lstdc++
+Compiller=gcc44 -lstdc++ -Winline -g
 else
-Compiller=g++
+Compiller=g++ -Winline -g
 endif
+OCompiller=$(Compiller) -O3
 
-all: pfc_sse.cpp
-	$(Compiller) -Winline -g -o pfc_sse $<
+all: pfc_sse pfc_unpack_sse
 
-# with havy optimization
-o: pfc_sse.cpp
-	$(Compiller) -O3 -Winline -g -o pfc_sse $<
+pfc_sse: pfc_sse.cpp
+	$(Compiller) -o $@ $<
+	$(OCompiller) -o o_$@ $<
+
+
+pfc_unpack_sse: pfc_unpack_sse.cpp
+	$(Compiller) -o $@ $<
+	$(OCompiller) -o o_$@ $<
 
 pkgDir = pfc_sse_$(shell date +%d%m%Y)
-pkg: Makefile pfc_sse.cpp
+pkg: Makefile pfc_sse.cpp pfc_unpack_sse.cpp
 	@printf "Making pkg ... "
 	@mkdir $(pkgDir)
 	@cp $^ $(pkgDir)
@@ -24,4 +29,4 @@ pkg: Makefile pfc_sse.cpp
 	@printf "DONE\n"
 
 clean:
-	rm pfc_sse *.tar.bz2
+	rm *pfc_sse *pfc_unpack_sse *.tar.bz2
