@@ -17,8 +17,6 @@ typedef uint8_t ui8;
 using namespace std;
 
 #define FORCE_INLINE __attribute__((always_inline))
-#define BENCHMARK 1
-#define SLOW_FETCH 0
 
 typedef const char* (*FUnpack) (
     const char* prev,
@@ -184,7 +182,7 @@ const char *simple_unpack (
 }
 
 
-#define BENCH_LCOUNT 1
+#define BENCH_LCOUNT 10000
 ui64 benchmark_run(
         FUnpack unpack,
         const char* from,
@@ -192,20 +190,21 @@ ui64 benchmark_run(
         size_t to_size,   // to_size % chunk_size == 0 !improtant
         size_t chunk_size // chunk_size & 3 == 0 !improtant
 ) {
-    ui64 count = 0;
     //{{{ start
     struct timeval start_t, end_t;
     gettimeofday(&start_t, 0);
     //}}}
     for( ui64 i = 0; i < BENCH_LCOUNT; i++ )
     {
+        ui64 count = 0;
+        const char* f_test = from;
         while ( (count + 2) * chunk_size < to_size )
         {
-            from = unpack(
+            f_test = unpack(
                 to + count * chunk_size,        // prev
                 to + (count + 1) * chunk_size,  // cur
                 chunk_size,                     // size
-                from                            // buf
+                f_test                          // buf
             );
             count += 1;
         }
@@ -235,7 +234,6 @@ int main()
     // Benchmark
     printf(":: Benchmark ( Runs: %ld )\n", BENCH_LCOUNT);
 
-    cout << "-> Simple:" << endl;
     ui64 simple_time = benchmark_run(
                            simple_unpack,
                            (const char*) in_data,
@@ -245,7 +243,6 @@ int main()
                        );
     printf("\tSimple:\t\t%ldu\n", simple_time);
 
-    cout << "-> SSE:" << endl;
     ui64 sse_time    = benchmark_run(
                            sse_unpack,
                            (const char*) in_data,
