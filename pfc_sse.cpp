@@ -154,7 +154,7 @@ int main()
 
 #if BENCHMARK
     // random data
-    size_t size = 4096;
+    size_t size = 16384;
     ui32 in_test[size], simple_out[size], sse_out[size];
     for ( int i = 0; i < size; i++ )
         in_test[i] = random();
