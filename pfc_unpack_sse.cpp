@@ -17,6 +17,7 @@ typedef uint8_t ui8;
 using namespace std;
 
 #define FORCE_INLINE __attribute__((always_inline))
+#define FORCE_SLOW 0
 
 typedef const char* (*FUnpack) (
     const char* prev,
@@ -89,11 +90,13 @@ const char* sse_unpack(
             ui64 shuffle = pfc_sse_table.Table[ mask ];
             ui64 count = (( shuffle >> 3 ) & 0xf);
             asm (
+#if !FORCE_SLOW
                 // if ( ( buf & 0xfff ) >= 0xff7 ) )
                 "movq       %1, %%rax\n"
                 "and        $0xfff, %%rax\n"
                 "cmp        $0xff6, %%rax\n"
                 "jbe        1f\n"
+#endif
                 // slow ( end of page )
                     // %rax = *(ui64*) (buf + count - 8)
                     "movq       -0x8(%1,%4,1), %%rax\n"
@@ -104,12 +107,14 @@ const char* sse_unpack(
                     "shr        %%cl, %%rax\n"
                     // %rax -> %xmm1
                     "movq       %%rax, %%xmm1\n"
+#if !FORCE_SLOW
                     "jmp        2f\n"
                 // fast
                 "1:\n"
                     "movq       (%1), %%xmm1\n"         // data -> xmm1
                 // out
                 "2:\n"
+#endif
 
                 // shuffle
                 "andq       $0xffffffffffffff87, %2\n"  // cleanup mask
