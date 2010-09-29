@@ -180,7 +180,7 @@ const char *simple_unpack (
 }
 
 
-#define BENCH_LCOUNT 10000UL
+#define BENCH_LCOUNT 1UL
 ui64 benchmark_run(
         FUnpack unpack,
         const char* from,
@@ -216,16 +216,27 @@ ui64 benchmark_run(
 int main()
 {
     // Values
-    const size_t size = 16384;
+    const size_t size = 1<<27;
+    const size_t m_size = size * sizeof(ui32);
 
     // Generate source data
-    ui32 in_data[size], out_sse[size], out_simple[size];
+    ui32 *in_data = (ui32*) malloc(m_size),
+         *out_sse = (ui32*) malloc(m_size),
+         *out_simple = (ui32*)  malloc(m_size);
+
+    if ( !( in_data && out_sse && out_simple ) )
+    {
+        fprintf(stderr, "Failed to allocate memory\n");
+        exit(1);
+    }
+
+    // Init random data
     for ( ui64 i = 0; i < size; i++ )
         in_data[i] = random();
 
     // Init destenation buffers
-    memset(out_simple, 0, sizeof(out_simple));
-    memset(out_sse, 0, sizeof(out_sse));
+    memset(out_simple, 0, m_size);
+    memset(out_sse, 0, m_size);
 
     // Benchmark
     printf(":: Benchmark ( Runs: %ld )\n", BENCH_LCOUNT);
@@ -234,8 +245,8 @@ int main()
                            simple_unpack,
                            (const char*) in_data,
                            (char*) out_simple,
-                           size * sizeof(ui32),
-                           sizeof(ui32) * 13
+                           m_size,
+                           sizeof(ui32) * 113
                        );
     printf("\tSimple:\t\t%ldu\n", simple_time);
 
@@ -243,8 +254,8 @@ int main()
                            sse_unpack,
                            (const char*) in_data,
                            (char*) out_sse,
-                           size * sizeof(ui32),
-                           sizeof(ui32) * 13
+                           m_size,
+                           sizeof(ui32) * 113
                        );
     printf("\tSSE:\t\t%ldu\n", sse_time);
 
