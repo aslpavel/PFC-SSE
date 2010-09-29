@@ -25,7 +25,6 @@ typedef const char* (*FUnpack) (
     const char *buf
 );
 
-
 class PfcSSETable
 {
 public:
@@ -155,7 +154,6 @@ const char *simple_unpack (
         }
 
         ui64 item = (cur + 8 <= cur_end)? *(ui64*)prev : *(ui32*)prev;
-        ui64 pitem = item;
         if (maskHdr & hdrMark) {
             ui8 mask = *buf++;
             if (mask == 255) { // big-endian: fixme
@@ -171,7 +169,7 @@ const char *simple_unpack (
                 mask >>= 1;
                 shift += 8;
             }
-            item = item & item_mask | item_flag;
+            item = ( item & item_mask ) | item_flag;
         }
         if (cur + 8 <= cur_end)
             *(ui64*)cur = item;
@@ -182,7 +180,7 @@ const char *simple_unpack (
 }
 
 
-#define BENCH_LCOUNT 10000
+#define BENCH_LCOUNT 10000UL
 ui64 benchmark_run(
         FUnpack unpack,
         const char* from,
@@ -217,14 +215,12 @@ ui64 benchmark_run(
 }
 int main()
 {
-    FUnpack methods[] = { sse_unpack, simple_unpack };
-
     // Values
     const size_t size = 16384;
 
     // Generate source data
     ui32 in_data[size], out_sse[size], out_simple[size];
-    for ( int i = 0; i < size; i++ )
+    for ( ui64 i = 0; i < size; i++ )
         in_data[i] = random();
 
     // Init destenation buffers
@@ -258,7 +254,7 @@ int main()
 
     //{{{ Verify
     bool good = true;
-    int i = 0;
+    ui64 i = 0;
     for(; i < size; i++ )
     {
         if ( out_simple[i] != out_sse[i] )
@@ -269,7 +265,7 @@ int main()
     }
     printf(":: Verification: ");
     if ( !good )
-        printf("FAILED (on %d)\n", i);
+        printf("FAILED (on %ld)\n", i);
     else
         printf("OK\n");
     //}}}

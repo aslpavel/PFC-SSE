@@ -4,7 +4,7 @@
 ifeq ($(shell uname),FreeBSD)
 Compiller=gcc44 -lstdc++ -Winline -g
 else
-Compiller=g++ -Winline -g
+Compiller=g++ -Wall -pedantic -Winline -g
 endif
 OCompiller=$(Compiller) -O3
 

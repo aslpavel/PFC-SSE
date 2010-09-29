@@ -93,7 +93,7 @@ FORCE_INLINE ui64 simple_unpack( ui64 prev, ui8* &buf, const ui64* table )
         mask >>= 1;
         shift += 8;
     }
-    item = item & item_mask | item_flag;
+    item = ( item & item_mask ) | item_flag;
 
     return item;
 }
@@ -154,9 +154,9 @@ int main()
 
 #if BENCHMARK
     // random data
-    size_t size = 16384;
+    const size_t size = 16384;
     ui32 in_test[size], simple_out[size], sse_out[size];
-    for ( int i = 0; i < size; i++ )
+    for ( ui64 i = 0; i < size; i++ )
         in_test[i] = random();
     memset(simple_out, 0, sizeof(simple_out));
     memset(sse_out, 0, sizeof(sse_out));
@@ -209,8 +209,8 @@ int main()
 
     // Verification
     bool good = true;
-    int i = 0;
-    for(; i < size; i++ )
+    ui64 i;
+    for( i = 0; i < size; i++ )
     {
         if ( simple_out[i] != sse_out[i] )
         {
@@ -220,7 +220,7 @@ int main()
     }
     printf(":: Verification: ");
     if ( !good )
-        printf("FAILED (on %d)\n", i);
+        printf("FAILED (on %ld)\n", i);
     else
         printf("OK\n");
 
