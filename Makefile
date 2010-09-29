@@ -2,11 +2,12 @@
 
 # Compiller
 ifeq ($(shell uname),FreeBSD)
-Compiller=gcc44 -lstdc++ -Winline -g
+Compiller:=gcc44 -lstdc++
 else
-Compiller=g++ -Wall -pedantic -Winline -g
+Compiller:=g++
 endif
-OCompiller=$(Compiller) -O3
+Compiller:=$(Compiller) -Wall -pedantic -Winline
+OCompiller:=$(Compiller) -O3
 
 all: pfc_sse pfc_unpack_sse
 
