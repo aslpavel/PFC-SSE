@@ -106,31 +106,30 @@ const char* sse_unpack(
                     "shl        $0x3, %%rcx\n"
                     "shr        %%cl, %%rax\n"
                     // %rax -> %xmm1
-                    "movq       %%rax, %%xmm1\n"
+                    "movq       %%rax, %%xmm1\n"        // data
 #if !FORCE_SLOW
                     "jmp        2f\n"
                 // fast
                 "1:\n"
-                    "movq       (%1), %%xmm1\n"         // data -> xmm1
+                    "movq       (%1), %%xmm1\n"         // data
                 // out
                 "2:\n"
 #endif
 
                 // shuffle
                 "andq       $0xffffffffffffff87, %2\n"  // cleanup mask
-                "movq       %2, %%xmm0\n"               // smask    -> xmm0
-                "pshufb     %%xmm0, %%xmm1\n"           // shuffle  -> xmm1
+                "movq       %2, %%xmm0\n"               // smask
+                "pshufb     %%xmm0, %%xmm1\n"           // shuffle
 
                 // blend
-                "movq       %3, %%xmm2\n"               // prev  -> xmm2
-                "pblendvb   %%xmm2, %%xmm1\n"           // blned -> xmm2
+                "pblendvb   %3, %%xmm1\n"
 
                 // return value
-                "movq       %%xmm1, %0\n"               // xmm2 -> item
+                "movq       %%xmm1, %0\n"               // save value
 
-                : "=r"(item)
-                : "r"(buf), "r"(shuffle), "r"(item), "r"(count)
-                : "xmm0", "xmm1", "xmm2", "rcx", "rax"
+                : "=x"(item)
+                : "r"(buf), "r"(shuffle), "x"(item), "r"(count)
+                : "xmm0", "xmm1", "rcx", "rax"
             );
 
             buf += count;
