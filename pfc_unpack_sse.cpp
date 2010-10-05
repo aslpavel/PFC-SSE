@@ -111,6 +111,7 @@ const char* sse_unpack(
                     "jmp        2f\n"
                 // fast
                 "1:\n"
+                    ".align 16\n"
                     "movq       (%1), %%xmm1\n"         // data
                 // out
                 "2:\n"
